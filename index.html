@@ -352,11 +352,11 @@ $('#imp').onchange=async e=>{
 // ---- units dropdown ----
 const UB=['pcs','set','pair','box','pack','dozen','bundle','roll','sheet','m','yd','ft','kg','g','L'];
 let usig=null;
-function buildUnits(){const s=$('#fu'),c=s.value&&s.value!=='__o'?s.value:'pcs',u=[...new Set(UB.concat(Object.values(S.items).map(i=>i.unit).filter(Boolean)))];s.innerHTML=u.map(x=>'<option>'+esc(x)+'</option>').join('')+'<option value="__o">Other (type your own)</option>';setUnit(c)}
-function setUnit(v){const s=$('#fu');if(v&&![...s.options].some(o=>o.value===v))s.insertBefore(new Option(v,v),s.querySelector('[value="__o"]'));s.value=v||'pcs';$('#fuol').hidden=true}
-function getUnit(){const s=$('#fu');return s.value==='__o'?($('#fuo').value.trim()||'pcs'):s.value}
-function unitSync(){const sig=[...new Set(Object.values(S.items).map(i=>i.unit))].sort().join('|');if(sig!==usig){usig=sig;buildUnits()}}
+function buildUnits(){const s=$('#fu'),c=s.value&&s.value!=='__o'?s.value:'pcs',u=[...new Set(UB.concat(Object.values(S.items).map(i=>i.unit).filter(Boolean)))];s.innerHTML=u.map(x=>'<option>'+esc(x)+'</option>').join('')+'<option value="__o">Others</option>';setUnit(c)}
+function setUnit(v){const s=$('#fu');if(v&&![...s.options].some(o=>o.value===v))s.insertBefore(new Option(v,v),s.querySelector('[value="__o"]'));s.value=v||'pcs';$('#fuol').hidden=true;$('#fuo').value=''}
+function getUnit(){const s=$('#fu');return s.value==='__o'?($('#fuo').value.trim()||'pcs'):(s.value||'pcs')}
 $('#fu').onchange=()=>{$('#fuol').hidden=$('#fu').value!=='__o';if(!$('#fuol').hidden)$('#fuo').focus()};
+function unitSync(){const sig=[...new Set(Object.values(S.items).map(i=>i.unit))].sort().join('|');if(sig!==usig){usig=sig;buildUnits()}}
 
 // ---- printing ----
 const pr=x=>{$('#prt').innerHTML=x;window.print()};
