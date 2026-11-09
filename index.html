@@ -95,7 +95,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <label>Name<input id="fn"></label>
 <div class="row" style="align-items:center;margin-bottom:8px"><img id="fimg" alt="" hidden class="th" style="margin-right:8px"><label style="margin:0">Photo<input type="file" id="ff" accept="image/*"></label><button class="sm" id="frm" type="button" hidden>Remove</button></div>
 <div class="grid" id="fqs"></div>
-<label>Unit<select id="fu"></select></label><label id="fuol" hidden>Type your own unit<input id="fuo" placeholder="e.g. bag"></label>
+<label>Unit<select id="fu"></select></label><label id="fuol" style="display:none">Type your own unit<input id="fuo" placeholder="e.g. bag"></label>
 <datalist id="ul"><option value="pcs"><option value="set"><option value="pair"><option value="box"><option value="pack"><option value="dozen"><option value="bundle"><option value="roll"><option value="sheet"><option value="m"><option value="yd"><option value="ft"><option value="kg"><option value="g"><option value="L"></datalist>
 <div class="row"><label>Cost each<input type="number" id="fcost" step="any"></label><label>Selling price<input type="number" id="fp" step="any"></label></div>
 <div class="row"><label>Reorder level<input type="number" id="fr" step="any"></label><label>Shelf / bin<input id="fl"></label></div>
@@ -159,6 +159,7 @@ const norm=x=>{x=x||{};const m=(a,f)=>Array.isArray(a)?a.reduce((o,r)=>{f(r);o[r
 return{locs:x.locs||['Store 1','Store 2','Warehouse'],items:x.items||{},receipts:x.receipts||{},adjs:x.adjs||{},biz:x.biz||'',phv:x.phv||{},pend:x.pend||{},pw:x.pw||'',tomb:x.tomb||{},dirty:x.dirty||{},cu:x.cu||0,
 sales:m(x.sales,r=>{r.iid=r.id;r.id=uid();r.lg=1}),orders:m(x.orders,r=>{r.id=r.id||uid();if(r.st==='delivered')r.lg=1})}};
 let S=(()=>{let x=null;try{x=JSON.parse(localStorage.getItem('inv1'))}catch(e){}return norm(x)})();
+['sales','adjs'].forEach(c=>Object.values(S[c]).forEach(r=>{if(typeof r.u==='string'){r.un=r.u;r.u=0}}));
 let cur=0,drafts=[],editId=null,fph='',unl=0,tt,ph={},idb=null;
 const save=()=>{try{localStorage.setItem('inv1',JSON.stringify(S))}catch(e){toast('Storage is full. Download a backup.')}schedSync()};
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2600)}
@@ -167,6 +168,7 @@ const setQ=(i,k,v)=>{i.q=i.q||[];i.q[k]=v},inSt=l=>cur<0||(l.s||0)===cur,lname=k
 const find=v=>{v=(v||'').trim().toLowerCase();if(!v)return null;const a=Object.values(S.items);return a.find(i=>String(i.code).toLowerCase()===v)||a.find(i=>String(i.name).toLowerCase()===v)||null};
 const paidOf=o=>(o.pays||[]).reduce((s,p)=>s+(+p.amt||0),0),balOf=o=>(+o.total||0)-paidOf(o);
 const payTxt=l=>l.a2>0?esc(l.pay)+' '+fmt(l.q*l.p-l.a2)+' + '+esc(l.pay2)+' '+fmt(l.a2):esc(l.pay);
+const uOf=l=>l.un||(typeof l.u==='string'?l.u:'')||(S.items[l.iid||l.id]?S.items[l.iid||l.id].unit:'');
 const thumb=id=>ph[id]?'<img class="th" src="'+ph[id]+'" alt="" data-lb="'+id+'">':'';
 
 // photos (IndexedDB)
@@ -221,7 +223,7 @@ $('#sdone').onclick=()=>{
   if(a1<0||a2<0||Math.abs(a1+a2-total)>.005)return toast('Payments must add up to '+fmt(total)+'. For part payment use Orders.');
   const rid=uid(),d=$('#sd').value||today(),no=$('#sr').value.trim();
   const low=cart.some(l=>S.items[l.iid]&&qo(S.items[l.iid],cur)-l.q<0);
-  cart.forEach(l=>{const id=uid();S.sales[id]={id,iid:l.iid,rid,n:l.n,u:l.u,code:l.code,d,s:cur,q:l.q,p:l.p,c:l.c,rc:no};touch('sales',id)});
+  cart.forEach(l=>{const id=uid();S.sales[id]={id,iid:l.iid,rid,n:l.n,un:l.u,code:l.code,d,s:cur,q:l.q,p:l.p,c:l.c,rc:no};touch('sales',id)});
   S.receipts[rid]={id:rid,no,d,s:cur,cust:$('#scust').value.trim(),total,n:cart.length,pays:[a1>0&&{pay:$('#spay').value,amt:a1},a2>0&&{pay:$('#spay2').value,amt:a2}].filter(Boolean)};touch('receipts',rid);
   cart=[];['#sa1','#sa2','#scust','#sr'].forEach(s=>$(s).value='');renderCart();save();render();toast(low?'Sale saved. Some stock is below zero, check your count':'Sale saved');
   if(confirm('Sale saved. Print the receipt?'))printReceipt(rid);
@@ -309,7 +311,7 @@ function render(){
   $('#swhere').innerHTML=cur<0?'Choose a location at the top to record a sale':'Recording sales for <b>'+esc(where)+'</b>';
   $('#dl').innerHTML=arr.map(i=>'<option value="'+esc(i.code)+'">'+esc(i.name)+' ('+qn(showQ(i))+' '+esc(i.unit)+')</option>').join('');
   const d=$('#sd').value||today();let tot=0;
-  const h0=SL().map(l=>{if(l.rid||l.d!==d||!inSt(l))return'';const t=l.q*l.p;tot+=t;return'<div class="row2"><div><b>'+esc(l.n)+'</b><div class="mut">'+qn(l.q)+' '+esc(l.u)+' × '+fmt(l.p)+' · '+payTxt(l)+(cur<0?' · '+esc(lname(l.s||0)):'')+(l.rc?' · #'+esc(l.rc):'')+'</div></div><div class="r"><b>'+fmt(t)+'</b><br><button class="sm" data-a="rm" data-id="'+l.id+'">Remove</button></div></div>'}).join('');
+  const h0=SL().map(l=>{if(l.rid||l.d!==d||!inSt(l))return'';const t=l.q*l.p;tot+=t;return'<div class="row2"><div><b>'+esc(l.n)+'</b><div class="mut">'+qn(l.q)+' '+esc(uOf(l))+' × '+fmt(l.p)+' · '+payTxt(l)+(cur<0?' · '+esc(lname(l.s||0)):'')+(l.rc?' · #'+esc(l.rc):'')+'</div></div><div class="r"><b>'+fmt(t)+'</b><br><button class="sm" data-a="rm" data-id="'+l.id+'">Remove</button></div></div>'}).join('');
   const hr=Object.values(S.receipts).filter(r=>r.d===d&&inSt(r)).map(r=>{tot+=r.total;return'<div class="row2"><div><b>'+(r.no?'#'+esc(r.no):'Sale')+(r.cust?' · '+esc(r.cust):'')+'</b><div class="mut">'+r.n+' items · '+r.pays.map(p=>esc(p.pay)+' '+fmt(p.amt)).join(' + ')+(cur<0?' · '+esc(lname(r.s||0)):'')+'</div></div><div class="r"><b>'+fmt(r.total)+'</b><br><button class="sm" data-a="rpr" data-id="'+r.id+'">Print</button><button class="sm" data-a="rrm" data-id="'+r.id+'">Remove</button></div></div>'}).join(''),h=hr+h0;
   $('#slist').innerHTML='<div class="card"><div class="tot"><span>'+esc(where)+' · '+d+'</span><b>'+fmt(tot)+'</b></div>'+(h||'<p class="mut">No sales yet for this date.</p>')+'</div>';
   renderOrders();
@@ -334,7 +336,7 @@ $('#bk').onclick=()=>dl('inventory-backup-'+today()+'.json',JSON.stringify({S,ph
 $('#rsb').onclick=()=>$('#rs').click();
 $('#rs').onchange=async e=>{const f=e.target.files[0];if(!f)return;e.target.value='';try{const x=JSON.parse(await f.text());if(!x.S||!x.S.items)throw 0;if(!await guard()||!confirm('Replace ALL current data with this backup?'))return;S=norm(x.S);markAll();Object.keys(ph).forEach(phDel);Object.entries(x.ph||{}).forEach(([k,v])=>phSet(k,v));save();applyLocs();render();toast('Backup restored')}catch(er){toast('That is not a valid backup file')}};
 $('#ex1').onclick=()=>dl('stock.csv',csv([['Code','Name','Type','Unit'].concat(S.locs.map(n=>'Qty '+n),['Cost','Price','Reorder','Shelf','Damaged','Note'])].concat(Object.values(S.items).map(i=>[i.code,i.name,i.type,i.unit].concat(S.locs.map((n,k)=>qo(i,k)),[i.cost,i.price,i.reorder,i.loc,i.damaged?'yes':'',i.note])))));
-$('#ex2').onclick=()=>dl('sales.csv',csv([['Date','Location','Receipt','Code','Item','Qty','Unit','Price','Total','Cost','Payment','Amount 2nd method','2nd method']].concat(SL().map(l=>[l.d,lname(l.s||0),l.rc,l.code,l.n,l.q,l.u,l.p,l.q*l.p,l.c,l.rid&&S.receipts[l.rid]?S.receipts[l.rid].pays.map(p=>p.pay+' '+p.amt).join(' + '):l.pay,l.a2||'',l.pay2||'']))));
+$('#ex2').onclick=()=>dl('sales.csv',csv([['Date','Location','Receipt','Code','Item','Qty','Unit','Price','Total','Cost','Payment','Amount 2nd method','2nd method']].concat(SL().map(l=>[l.d,lname(l.s||0),l.rc,l.code,l.n,l.q,uOf(l),l.p,l.q*l.p,l.c,l.rid&&S.receipts[l.rid]?S.receipts[l.rid].pays.map(p=>p.pay+' '+p.amt).join(' + '):l.pay,l.a2||'',l.pay2||'']))));
 $('#ex3').onclick=()=>dl('orders.csv',csv([['Date','Customer','Phone','Order #','Status','Location','Total','Paid','Balance','Items','Note']].concat(OR().map(o=>[o.d,o.cust,o.ph,o.no,o.st,lname(o.s||0),o.total,paidOf(o),balOf(o),o.lines.map(l=>qn(l.q)+' '+l.n).join('; '),o.note]))));
 function parseCSV(t){const r=[];let row=[],f='',q=false;for(let i=0;i<t.length;i++){const c=t[i];if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=false}else f+=c}else if(c==='"')q=true;else if(c===','){row.push(f);f=''}else if(c==='\n'||c==='\r'){if(c==='\r'&&t[i+1]==='\n')i++;row.push(f);f='';if(row.length>1||row[0])r.push(row);row=[]}else f+=c}if(f||row.length){row.push(f);r.push(row)}return r}
 $('#impb').onclick=()=>$('#imp').click();
@@ -354,15 +356,15 @@ $('#imp').onchange=async e=>{
 const UB=['pcs','set','pair','box','pack','dozen','bundle','roll','sheet','m','yd','ft','kg','g','L'];
 let usig=null;
 function buildUnits(){const s=$('#fu'),c=s.value&&s.value!=='__o'?s.value:'pcs',u=[...new Set(UB.concat(Object.values(S.items).map(i=>i.unit).filter(Boolean)))];s.innerHTML=u.map(x=>'<option>'+esc(x)+'</option>').join('')+'<option value="__o">Others</option>';setUnit(c)}
-function setUnit(v){const s=$('#fu');if(v&&![...s.options].some(o=>o.value===v))s.insertBefore(new Option(v,v),s.querySelector('[value="__o"]'));s.value=v||'pcs';$('#fuol').hidden=true;$('#fuo').value=''}
+function setUnit(v){const s=$('#fu');if(v&&![...s.options].some(o=>o.value===v))s.insertBefore(new Option(v,v),s.querySelector('[value="__o"]'));s.value=v||'pcs';$('#fuol').style.display='none';$('#fuo').value=''}
 function getUnit(){const s=$('#fu');return s.value==='__o'?($('#fuo').value.trim()||'pcs'):(s.value||'pcs')}
-$('#fu').onchange=()=>{$('#fuol').hidden=$('#fu').value!=='__o';if(!$('#fuol').hidden)$('#fuo').focus()};
+$('#fu').onchange=()=>{const o=$('#fu').value==='__o';$('#fuol').style.display=o?'block':'none';if(o)$('#fuo').focus()};
 function unitSync(){const sig=[...new Set(Object.values(S.items).map(i=>i.unit))].sort().join('|');if(sig!==usig){usig=sig;buildUnits()}}
 
 // ---- printing ----
 const pr=x=>{$('#prt').innerHTML=x;window.print()};
 const head=t=>'<h2 style="margin:0">'+esc(S.biz||'')+'</h2><h3 style="margin:2px 0 10px">'+t+'</h3>';
-const tbl=L=>'<table><tr><th>Item</th><th class="n">Qty</th><th class="n">Price</th><th class="n">Amount</th></tr>'+L.map(l=>'<tr><td>'+esc(l.n)+'</td><td class="n">'+qn(l.q)+' '+esc(l.u)+'</td><td class="n">'+fmt(l.p)+'</td><td class="n">'+fmt(l.q*l.p)+'</td></tr>').join('')+'</table>';
+const tbl=L=>'<table><tr><th>Item</th><th class="n">Qty</th><th class="n">Price</th><th class="n">Amount</th></tr>'+L.map(l=>'<tr><td>'+esc(l.n)+'</td><td class="n">'+qn(l.q)+' '+esc(uOf(l))+'</td><td class="n">'+fmt(l.p)+'</td><td class="n">'+fmt(l.q*l.p)+'</td></tr>').join('')+'</table>';
 function printReceipt(id){const r=S.receipts[id];if(!r)return;
   pr(head('Receipt'+(r.no?' #'+esc(r.no):''))+'<p>'+r.d+(r.cust?' · '+esc(r.cust):'')+' · '+esc(lname(r.s||0))+'</p>'+tbl(SL().filter(l=>l.rid===id))+'<p><b>Total '+fmt(r.total)+'</b></p><p>'+r.pays.map(p=>esc(p.pay)+': '+fmt(p.amt)).join('<br>')+'</p><p>Thank you!</p>')}
 function printOrder(id){const o=S.orders[id];if(!o)return;
@@ -395,7 +397,7 @@ $('#capply').onclick=async()=>{
   if(!ch.length)return toast('Enter at least one count');
   const dif=ch.filter(x=>Math.abs(x.diff)>.0001),val=dif.reduce((s,x)=>s+x.diff*(+x.i.cost||0),0);
   if(!await guard()||!confirm(ch.length+' items counted, '+dif.length+' differ (value '+fmt(val)+'). Update stock to the counted numbers?'))return;
-  dif.forEach(x=>{setQ(x.i,cur,base(x.i,cur)+x.diff);touch('items',x.i.id);const id=uid();S.adjs[id]={id,d:today(),s:cur,iid:x.i.id,n:x.i.name,u:x.i.unit,sys:x.sys,cnt:x.c,diff:x.diff,c:+x.i.cost||0};touch('adjs',id)});
+  dif.forEach(x=>{setQ(x.i,cur,base(x.i,cur)+x.diff);touch('items',x.i.id);const id=uid();S.adjs[id]={id,d:today(),s:cur,iid:x.i.id,n:x.i.name,un:x.i.unit,sys:x.sys,cnt:x.c,diff:x.diff,c:+x.i.cost||0};touch('adjs',id)});
   cnt={};save();render();toast('Stock updated')};
 
 // ---- photo sync through Google Drive ----
