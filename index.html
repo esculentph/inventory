@@ -94,7 +94,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <label>Name<input id="fn"></label>
 <div class="row" style="align-items:center;margin-bottom:8px"><img id="fimg" alt="" hidden class="th" style="margin-right:8px"><label style="margin:0">Photo<input type="file" id="ff" accept="image/*"></label><button class="sm" id="frm" type="button" hidden>Remove</button></div>
 <div class="grid" id="fqs"></div>
-<label>Unit<input id="fu" list="ul" value="pcs"></label>
+<label>Unit<select id="fu"></select></label><label id="fuol" hidden>Type your own unit<input id="fuo" placeholder="e.g. bag"></label>
 <datalist id="ul"><option value="pcs"><option value="set"><option value="pair"><option value="box"><option value="pack"><option value="dozen"><option value="bundle"><option value="roll"><option value="sheet"><option value="m"><option value="yd"><option value="ft"><option value="kg"><option value="g"><option value="L"></datalist>
 <div class="row"><label>Cost each<input type="number" id="fcost" step="any"></label><label>Selling price<input type="number" id="fp" step="any"></label></div>
 <div class="row"><label>Reorder level<input type="number" id="fr" step="any"></label><label>Shelf / bin<input id="fl"></label></div>
@@ -232,19 +232,19 @@ function showPh(){$('#fimg').hidden=!fph;if(fph)$('#fimg').src=fph;$('#frm').hid
 $('#ff').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{fph=await shrink(f);showPh();toast('Photo ready. Tap Save item.')}catch(x){toast('Could not read the photo')}e.target.value=''};
 $('#frm').onclick=()=>{fph='';showPh()};
 function loadForm(id){const i=S.items[id];if(!i)return;editId=id;
-  $('#fc').value=i.code;$('#fn').value=i.name;$('#ft').value=i.type;$('#fu').value=i.unit;fq().forEach(x=>x.value=qo(i,+x.dataset.k)||'');
+  $('#fc').value=i.code;$('#fn').value=i.name;$('#ft').value=i.type;setUnit(i.unit);fq().forEach(x=>x.value=qo(i,+x.dataset.k)||'');
   $('#fcost').value=i.cost||'';$('#fp').value=i.price||'';$('#fr').value=i.reorder||'';$('#fl').value=i.loc||'';$('#fnote').value=i.note||'';$('#fd').checked=!!i.damaged;
   fph=ph[id]||'';showPh();$('#ftitle').textContent='Edit item';$('#fform').open=true;window.scrollTo(0,0)}
-function clearForm(){editId=null;['fc','fn','fcost','fp','fr','fl','fnote'].forEach(x=>$('#'+x).value='');fq().forEach(x=>x.value='');$('#fu').value='pcs';$('#ft').value='unit';$('#fd').checked=false;fph='';showPh();$('#ftitle').textContent='Add item'}
+function clearForm(){editId=null;['fc','fn','fcost','fp','fr','fl','fnote'].forEach(x=>$('#'+x).value='');fq().forEach(x=>x.value='');setUnit('pcs');$('#ft').value='unit';$('#fd').checked=false;fph='';showPh();$('#ftitle').textContent='Add item'}
 $('#fclear').onclick=clearForm;
-$('#ft').onchange=()=>{if(!editId)$('#fu').value=$('#ft').value==='roll'?'m':'pcs'};
+$('#ft').onchange=()=>{if(!editId)setUnit($('#ft').value==='roll'?'m':'pcs')};
 $('#fsave').onclick=async()=>{
   const code=$('#fc').value.trim(),name=$('#fn').value.trim();
   if(!code||!name)return toast('Code and name are required');
   if(Object.values(S.items).some(i=>String(i.code).toLowerCase()===code.toLowerCase()&&i.id!==editId))return toast('That code is already used');
   if(!await guard())return;
   const id=editId||uid(),q=[];fq().forEach(x=>q[+x.dataset.k]=(parseFloat(x.value)||0)+((sold[id]||{})[+x.dataset.k]||0));
-  S.items[id]={id,code,name,pid:(S.items[id]||{}).pid,pv:(S.items[id]||{}).pv,type:$('#ft').value,unit:$('#fu').value.trim()||'pcs',q,cost:parseFloat($('#fcost').value)||0,price:parseFloat($('#fp').value)||0,reorder:parseFloat($('#fr').value)||0,loc:$('#fl').value.trim(),note:$('#fnote').value.trim(),damaged:$('#fd').checked};
+  S.items[id]={id,code,name,pid:(S.items[id]||{}).pid,pv:(S.items[id]||{}).pv,type:$('#ft').value,unit:getUnit(),q,cost:parseFloat($('#fcost').value)||0,price:parseFloat($('#fp').value)||0,reorder:parseFloat($('#fr').value)||0,loc:$('#fl').value.trim(),note:$('#fnote').value.trim(),damaged:$('#fd').checked};
   const oldp=ph[id]||'';if(fph!==oldp){const it2=S.items[id];it2.pv=Date.now();S.phv[id]=it2.pv;if(fph)S.pend[id]=1;else{delete S.pend[id];it2.pid=''}}touch('items',id);fph?phSet(id,fph):phDel(id);save();clearForm();render();toast('Item saved');
 };
 $('#mmove').onclick=async()=>{
@@ -303,7 +303,7 @@ document.addEventListener('click',async e=>{
 });
 
 function render(){
-  calcSold();renderCount();
+  calcSold();renderCount();unitSync();
   const arr=Object.values(S.items).sort((a,b)=>String(a.name).localeCompare(String(b.name))),where=cur<0?'All locations':lname(cur);
   $('#swhere').innerHTML=cur<0?'Choose a location at the top to record a sale':'Recording sales for <b>'+esc(where)+'</b>';
   $('#dl').innerHTML=arr.map(i=>'<option value="'+esc(i.code)+'">'+esc(i.name)+' ('+qn(showQ(i))+' '+esc(i.unit)+')</option>').join('');
@@ -348,6 +348,15 @@ $('#imp').onchange=async e=>{
   save();applyLocs();render();toast('Imported '+n+' items');
 };
 
+
+// ---- units dropdown ----
+const UB=['pcs','set','pair','box','pack','dozen','bundle','roll','sheet','m','yd','ft','kg','g','L'];
+let usig=null;
+function buildUnits(){const s=$('#fu'),c=s.value&&s.value!=='__o'?s.value:'pcs',u=[...new Set(UB.concat(Object.values(S.items).map(i=>i.unit).filter(Boolean)))];s.innerHTML=u.map(x=>'<option>'+esc(x)+'</option>').join('')+'<option value="__o">Other (type your own)</option>';setUnit(c)}
+function setUnit(v){const s=$('#fu');if(v&&![...s.options].some(o=>o.value===v))s.insertBefore(new Option(v,v),s.querySelector('[value="__o"]'));s.value=v||'pcs';$('#fuol').hidden=true}
+function getUnit(){const s=$('#fu');return s.value==='__o'?($('#fuo').value.trim()||'pcs'):s.value}
+function unitSync(){const sig=[...new Set(Object.values(S.items).map(i=>i.unit))].sort().join('|');if(sig!==usig){usig=sig;buildUnits()}}
+$('#fu').onchange=()=>{$('#fuol').hidden=$('#fu').value!=='__o';if(!$('#fuol').hidden)$('#fuo').focus()};
 
 // ---- printing ----
 const pr=x=>{$('#prt').innerHTML=x;window.print()};
